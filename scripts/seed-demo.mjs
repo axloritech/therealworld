@@ -201,10 +201,29 @@ async function main() {
     );
   }
   if (!assets || assets.length === 0) {
-    fail("asset_config is empty — run supabase/migrations/0001…0004 against this project first.");
+    fail("asset_config is empty — run supabase/migrations/0001…0005 against this project first.");
   }
   const { data: faqs } = await service.from("faqs").select("id", { count: "exact", head: true });
   ok(`Schema present (${assets.length} assets, ${faqs ?? "?"} FAQ rows)`);
+
+  /* ── 0 · Authorise the administrator address ────────────────────────── */
+  // The sign-up trigger grants the admin role and permits the reserved
+  // username `admin` only when the email is listed in public.admin_emails
+  // (migration 0005). Seed it before creating accounts, on conflict do
+  // nothing — the same allow-list the SQL-editor bootstrap uses.
+  console.log("\nAdmin allow-list\n");
+  for (const person of PEOPLE) {
+    if (!person.admin) continue;
+    if (DRY) {
+      console.log(`  would authorise ${person.email}`);
+      continue;
+    }
+    const { error: allowError } = await service
+      .from("admin_emails")
+      .upsert({ email: person.email }, { onConflict: "email", ignoreDuplicates: true });
+    if (allowError) warnings.push(`could not authorise ${person.email}: ${allowError.message}`);
+    else info(`authorised ${person.email} for administrator sign-up/role`);
+  }
 
   if (DRY) {
     console.log("\nWould create / update:\n");
