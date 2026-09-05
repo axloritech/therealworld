@@ -26,8 +26,8 @@ export const SITE = {
   name: str("NEXT_PUBLIC_SITE_NAME", "The Real World"),
   url: str("NEXT_PUBLIC_SITE_URL", "http://localhost:3000"),
   /** Empty by design — the logo slots stay blank until you supply your own art. */
-  logoUrl: str("NEXT_PUBLIC_LOGO_URL", ""),
-  logoMarkUrl: str("NEXT_PUBLIC_LOGO_MARK_URL", ""),
+  logoUrl: str("NEXT_PUBLIC_LOGO_URL", "/logo.jpg"),
+  logoMarkUrl: str("NEXT_PUBLIC_LOGO_MARK_URL", "/logo.jpg"),
 };
 
 /* Cosmetic figure shown on the admin overview: one trillion US dollars of
@@ -79,6 +79,46 @@ export const YOUTUBE_ID = resolveYouTubeId(str("NEXT_PUBLIC_YOUTUBE_VIDEO_ID"));
 export const YOUTUBE_TITLE = str(
   "NEXT_PUBLIC_YOUTUBE_TITLE",
   `${SITE.name} — platform overview`,
+);
+
+/* ───────────────────────── Video sources ───────────────────────── */
+
+export interface VideoSource {
+  kind: "youtube" | "vimeo";
+  id: string;
+}
+
+/**
+ * Accepts YouTube IDs/URLs (watch, youtu.be, embed, shorts) and Vimeo URLs or
+ * bare numeric Vimeo IDs. Returns null when nothing usable is configured so
+ * the slot can render its empty-state panel instead.
+ */
+export function resolveVideo(raw: string): VideoSource | null {
+  const value = (raw || "").trim();
+  if (!value) return null;
+  if (/^\d{6,12}$/.test(value)) return { kind: "vimeo", id: value };
+  const youtube = resolveYouTubeId(value);
+  if (youtube) return { kind: "youtube", id: youtube };
+  try {
+    const url = new URL(value.startsWith("http") ? value : `https://${value}`);
+    const host = url.hostname.replace(/^www\./, "").replace(/^player\./, "");
+    if (host === "vimeo.com" || host.endsWith(".vimeo.com")) {
+      const id = url.pathname.split("/").filter(Boolean)[0];
+      return id && /^\d{6,12}$/.test(id) ? { kind: "vimeo", id } : null;
+    }
+  } catch {
+    /* not a URL */
+  }
+  return null;
+}
+
+/** Hero film — the owner's Vimeo cut by default. */
+export const HERO_VIDEO = resolveVideo(
+  str("NEXT_PUBLIC_HERO_VIDEO", str("NEXT_PUBLIC_YOUTUBE_VIDEO_ID", "https://vimeo.com/902932460")),
+);
+/** Second film shown in the "Market analysis" section. */
+export const MARKET_VIDEO = resolveVideo(
+  str("NEXT_PUBLIC_MARKET_VIDEO", "https://youtu.be/yLMO2F7r01E"),
 );
 
 /* ───────────────────────── Assets ───────────────────────── */

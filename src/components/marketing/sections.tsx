@@ -16,8 +16,9 @@ import {
   Trophy,
 } from "lucide-react";
 import Link from "next/link";
+import { HeroVideo } from "@/components/marketing/HeroVideo";
 import { AssetIcon } from "@/components/ui/AssetIcon";
-import { ASSETS, ASSET_META } from "@/lib/config";
+import { MARKET_VIDEO, ASSETS, ASSET_META } from "@/lib/config";
 import { fmtUsd } from "@/lib/format";
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -123,21 +124,11 @@ export function MarketAnalysisSection() {
           </p>
         </div>
 
-        <a
-          href="#tour"
-          className="group relative block overflow-hidden rounded-card border border-line bg-night-900"
-        >
-          <div
-            aria-hidden="true"
-            className="aspect-video w-full bg-[radial-gradient(70%_90%_at_30%_10%,rgba(237,161,67,0.22),transparent_60%),radial-gradient(60%_80%_at_80%_90%,rgba(255,122,24,0.16),transparent_60%),linear-gradient(160deg,#101014_0%,#050506_100%)]"
-          />
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-4">
-            <span className="flex h-16 w-16 items-center justify-center rounded-xl bg-[#cc1f2d] shadow-lg transition group-hover:scale-105">
-              <Play className="h-7 w-7 fill-white text-white" aria-hidden="true" />
-            </span>
-            <span className="text-sm font-semibold text-mist">Watch the platform tour</span>
-          </div>
-        </a>
+        <HeroVideo
+          video={MARKET_VIDEO}
+          title="Market analysis and trade inspiration"
+          label="Watch the analysis reel"
+        />
       </div>
     </section>
   );

@@ -24,7 +24,7 @@ import {
   ThreeSteps,
 } from "@/components/marketing/showcase";
 import { SectionHeading } from "@/components/ui/EmptyState";
-import { YOUTUBE_ID, YOUTUBE_TITLE } from "@/lib/config";
+import { HERO_VIDEO, YOUTUBE_TITLE } from "@/lib/config";
 import { FAQ_CATEGORIES } from "@/lib/faq";
 import { getRepo } from "@/lib/repo";
 
@@ -66,7 +66,7 @@ export default async function HomePage() {
 
           {/* ── Hero video ── */}
           <div id="tour" className="mt-12 max-w-2xl scroll-mt-28 lg:mt-16">
-            <HeroVideo videoId={YOUTUBE_ID} title={YOUTUBE_TITLE} />
+            <HeroVideo video={HERO_VIDEO} title={YOUTUBE_TITLE} />
           </div>
         </div>
       </section>

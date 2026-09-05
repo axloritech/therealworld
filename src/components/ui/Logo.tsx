@@ -1,4 +1,7 @@
+"use client";
+
 import { clsx } from "clsx";
+import { useState } from "react";
 import { SITE } from "@/lib/config";
 
 /**
@@ -30,8 +33,13 @@ export function LogoSlot({
   /** Render the dashed placeholder outline (off by default so slots look intentionally empty). */
   showFrame?: boolean;
 }) {
+  const [missing, setMissing] = useState(false);
   const size = SIZES[variant];
-  const src = variant === "mark" ? SITE.logoMarkUrl || SITE.logoUrl : SITE.logoUrl || SITE.logoMarkUrl;
+  const configured =
+    variant === "mark" ? SITE.logoMarkUrl || SITE.logoUrl : SITE.logoUrl || SITE.logoMarkUrl;
+  // If the file has not been dropped into /public yet, fall back to the clean
+  // empty slot instead of showing a broken image.
+  const src = missing ? "" : configured;
 
   const frame = (
     <span
@@ -46,7 +54,12 @@ export function LogoSlot({
     >
       {src ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={src} alt={SITE.name} className="h-full w-full object-contain" />
+        <img
+          src={src}
+          alt={SITE.name}
+          onError={() => setMissing(true)}
+          className="h-full w-full object-contain"
+        />
       ) : null}
     </span>
   );
