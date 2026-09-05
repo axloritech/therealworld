@@ -1,0 +1,34 @@
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Migration 4 of 4 · FAQ knowledge base
+--
+-- Generated from src/lib/faq.ts so the database and the bundled fallback stay
+-- identical. Re-runnable: existing rows are updated in place.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+insert into public.faqs (id, category, question, answer, position)
+values
+  ('faq-1', 'Sandbox', 'Is this a real trading platform with real money?', 'No. This is a demonstration and sandbox environment. Every balance, deposit, withdrawal and trade shown here is simulated with demo funds. No real fiat currency and no real cryptocurrency is ever transferred, held or exchanged, and wallet addresses are never broadcast to any blockchain.', 10),
+  ('faq-2', 'Getting started', 'How do I create an account?', 'Choose a unique username, a valid email address and a password of at least 8 characters, then submit the registration form. New sandbox accounts are credited with starter demo balances in BTC, ETH and USDT so you can explore every screen immediately.', 20),
+  ('faq-3', 'Getting started', 'Why must usernames be unique?', 'Your username is your public account identifier — admins use it to look you up, and it appears on withdrawal requests and support conversations. The database enforces a unique constraint, so a duplicate is rejected at sign-up rather than silently merged later.', 30),
+  ('faq-4', 'Getting started', 'Can I log in with my username instead of my email?', 'Yes. The login form accepts either your username or your email address in the same field, along with your password.', 40),
+  ('faq-5', 'Deposits', 'How do I add funds to my demo balances?', 'Open Dashboard → Deposit, pick BTC, ETH or USDT, enter an amount and confirm. The credit is instant and is recorded in your transaction history as a demo deposit. No payment is taken and no on-chain transfer occurs.', 50),
+  ('faq-6', 'Deposits', 'Do deposits require blockchain confirmations?', 'Not in the sandbox — credits are instant so you can test the full flow. The asset reference card still shows the confirmation count a live network would require (2 for Bitcoin, 12 for Ethereum, 19 for Tron) for realism.', 60),
+  ('faq-7', 'Withdrawals', 'How do I request a withdrawal?', 'Go to Dashboard → Withdraw, select the asset and network, enter the amount and paste your destination wallet address, then submit. The request is created with status Pending and the amount is held (deducted from your available balance) until an administrator reviews it.', 70),
+  ('faq-8', 'Withdrawals', 'What does a Pending withdrawal mean?', 'Pending means your request is queued for admin review. Nothing is sent anywhere while it is Pending. An administrator will approve it, reject it, or you can cancel it yourself. Only after approval does the status change — and even then, this being a sandbox, no real funds move.', 80),
+  ('faq-9', 'Withdrawals', 'Can I cancel a withdrawal after submitting it?', 'Yes, as long as it is still Pending. Open Dashboard → Withdrawals and choose Cancel. The held amount is returned to your balance immediately and a refund entry appears in your transaction history.', 90),
+  ('faq-10', 'Withdrawals', 'What happens if a withdrawal is rejected?', 'A rejected request is reversed automatically: the full held amount is credited back to your balance, the original ledger entry is marked reversed, and the admin''s reason is stored against the request so you can see why.', 100),
+  ('faq-11', 'Withdrawals', 'Are there minimum, maximum or fee limits?', 'Yes, per asset: BTC 0.0005–5 (fee 0.0002), ETH 0.01–200 (fee 0.004), USDT 20–100,000 (fee 1). The fee is deducted from the payout, and the withdrawal form shows the exact amount you would receive before you submit.', 110),
+  ('faq-12', 'Withdrawals', 'Why was my wallet address rejected?', 'Each network has a strict address format. Bitcoin accepts legacy (1…), nested SegWit (3…) or native SegWit (bc1…); Ethereum, Arbitrum and BNB Smart Chain require 0x followed by 40 hex characters; Tron requires T followed by 33 base58 characters. Make sure the network you selected matches the address you pasted.', 120),
+  ('faq-13', 'Security', 'How is my account protected?', 'Authentication is handled by Supabase Auth with bcrypt-hashed passwords and signed session cookies. Every table is protected by row-level security so a signed-in user can only read their own balances, transactions, withdrawals and support messages. Role checks for admin areas are enforced inside the database, not only in the interface.', 130),
+  ('faq-14', 'Security', 'Who can see my balances and transactions?', 'You, and administrators of this sandbox for review purposes. Row-level security policies restrict all other accounts. Your full history is available to you at Dashboard → Transactions, and every admin action is recorded with a reference and a timestamp.', 140),
+  ('faq-15', 'Security', 'How do I become an administrator?', 'Admin access is granted by an existing administrator from Admin → Users, or automatically for addresses listed in the ADMIN_EMAILS environment variable. There is no self-service route to admin privileges.', 150),
+  ('faq-16', 'Security', 'I forgot my password — what now?', 'In the sandbox, an administrator can reset a demo password from Admin → Users. With Supabase configured, use the standard password-recovery email flow from your project''s authentication settings.', 160),
+  ('faq-17', 'Sandbox', 'How do I reach customer support?', 'Open Dashboard → Support and start a conversation with a subject and message. Administrators see every thread in Admin → Support and reply in the same conversation. Your full message history is retained and visible to you at any time.', 170),
+  ('faq-18', 'Sandbox', 'Where do the prices shown on the site come from?', 'They are fixed reference prices bundled with this demo, used only to convert your sandbox balances into an indicative total. They are not live market data, not a price feed, and must not be used for any real trading decision.', 180),
+  ('faq-19', 'Sandbox', 'Can administrators change my balance?', 'Yes — this is a sandbox, so administrators can set demo balances from Admin → Users. Every change writes a signed-off entry to your transaction history labelled Admin adjust, showing the resulting balance and the reason recorded by the administrator.', 190),
+  ('faq-20', 'Sandbox', 'Can this demo be used to take real payments?', 'No, and it must not be. There is no custody, no exchange connectivity, no banking integration and no blockchain signing capability anywhere in this codebase. It exists to demonstrate interface, workflow and role-based administration only.', 200)
+on conflict (id) do update set
+  category = excluded.category,
+  question = excluded.question,
+  answer   = excluded.answer,
+  position = excluded.position;
