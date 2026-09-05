@@ -71,7 +71,7 @@ Demo credentials (local demo mode only, shown on the login page):
 
 ## Supabase setup
 
-1. Create a project, then apply `supabase/migrations/0001…0004`
+1. Create a project, then apply `supabase/migrations/0001…0005`
    (`supabase db push`, or paste them in the SQL editor in order).
    They are idempotent and seed the asset config and the FAQ knowledge base.
 2. Copy `.env.example` → `.env.local` and fill in:
@@ -82,6 +82,40 @@ Demo credentials (local demo mode only, shown on the login page):
 3. Optional: `npm run db:seed` for demo data, `npm run db:admin -- you@x.com`
    to grant yourself admin.
 
+### Create the first administrator
+
+A fresh Supabase project has **zero users** in `auth.users`, so the demo
+administrator (`admin` / `Admin1234!`) does not exist there — the demo
+credentials above are local-demo-mode only. Paste this into **Database → SQL
+editor** after the migrations have been applied (it is safe to run once; the
+first statement is idempotent, the second must succeed when the account is
+new):
+
+```sql
+insert into public.admin_emails (email) values ('admin@therealworld.demo')
+on conflict (email) do nothing;
+
+insert into auth.users
+  (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
+   raw_user_meta_data, created_at, updated_at, last_sign_in_at)
+values
+  (gen_random_uuid(), '00000000-0000-0000-0000-000000000000',
+   'authenticated', 'authenticated', 'admin@therealworld.demo',
+   crypt('Admin1234!', gen_salt('bf', 10)), now(),
+   '{"username":"admin","full_name":"Platform Administrator","role":"admin"}'::jsonb,
+   now(), now(), now());
+```
+
+The `on_auth_user_created` trigger builds the `profiles` row, opens the
+starter balances, and promotes the account to **admin** because
+`admin@therealworld.demo` is on the `admin_emails` allow-list — all in the
+same transaction, so nothing half-exists. `admin` is otherwise a reserved
+username: migration `0005` lifts that guard only for pre-authorised addresses
+(and for `npm run db:seed`, which now seeds the allow-list itself).
+
+If `crypt()` or `gen_salt()` are not on the search path, qualify them as
+`extensions.crypt(...)` / `extensions.gen_salt(...)`.
+
 Security model: RLS exposes **read-only, own-rows-or-admin** policies; all
 money movement happens inside `SECURITY DEFINER` functions owned by the table
 owner, each of which re-checks authorisation; privileged RPCs are revoked from
@@ -89,10 +123,19 @@ owner, each of which re-checks authorisation; privileged RPCs are revoked from
 
 ## Deployment (Vercel)
 
-`vercel.json` is included. Import the repository in Vercel, set the env vars
-from `.env.example` (omit all of them to deploy in local-demo mode), and
-deploy — the framework preset is Next.js. The service-role key must be added
-as a **server-side** environment variable only.
+`vercel.json` is included. Import the repository in Vercel and deploy — the
+framework preset is Next.js. To go live against Supabase, set exactly these
+three variables (**all three** — username login needs the service role, which
+resolves usernames to emails before Supabase Auth signs in):
+
+| Variable | Scope | Purpose |
+| --- | --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | client + server | Project URL (Settings → API) |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | client + server | Browser-facing anon key |
+| `SUPABASE_SERVICE_ROLE_KEY` | **server-only** | Username→email resolution, admin console. Never `NEXT_PUBLIC_`, never in the bundle |
+
+Omit all of them (plus `.env.local`) to deploy in local-demo mode. Details and
+the post-deploy checklist live in `docs/ops-notes.md`.
 
 ## Branding
 
@@ -105,7 +148,9 @@ poster panel keeps the layout stable.
 ## Tests
 
 - `scripts/test-supabase-sql.mjs` — migrations + triggers + RPCs + RLS +
-  constraints against a real embedded Postgres cluster (42 assertions).
+  constraints against a real embedded Postgres cluster, including the
+  first-administrator bootstrap path (53 assertions; run the suite with
+  `npm run db:test`).
 - The demo adapter is covered by an equivalent flow suite (treasury sends,
   withdrawal lifecycle, refunds, reversals, balance management, ledger order).
 

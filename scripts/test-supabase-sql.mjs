@@ -38,9 +38,16 @@ grant execute on all functions in schema auth to anon, authenticated, service_ro
 
 create table if not exists auth.users (
   id                 uuid primary key default gen_random_uuid(),
+  instance_id        uuid,
+  aud                text,
+  role               text,
   email              text,
+  encrypted_password text,
+  email_confirmed_at timestamptz,
   raw_user_meta_data jsonb not null default '{}'::jsonb,
-  created_at         timestamptz not null default now()
+  created_at         timestamptz not null default now(),
+  updated_at         timestamptz not null default now(),
+  last_sign_in_at    timestamptz
 );
 
 create or replace function auth.uid() returns uuid language sql stable as $$
@@ -171,6 +178,55 @@ async function main() {
   await client.query(`insert into public.admin_emails (email) values ('root@example.com')`);
   const rootId = await signup("root@example.com", "rootuser");
   ok("admin_emails auto-promotion", (await val(`select role from public.profiles where id=$1`, [rootId])) === "admin");
+
+  // A reserved username is never available to ordinary sign-ups; migration
+  // 0005 only opens it for addresses that are pre-authorised in admin_emails.
+  await raisesMsg("reserved username blocked for ordinary sign-ups",
+    `insert into auth.users (email, raw_user_meta_data)
+     values ('evil@example.com', '{"username":"admin"}'::jsonb)`, [], "reserved");
+
+  console.log("\n\u2500\u2500 First administrator bootstrap (SQL editor path) \u2500\u2500");
+  // Mirrors README → "Create the first administrator": the same statements,
+  // executed against the same trigger path the owner's phone snippet uses.
+  await client.query(
+    `insert into public.admin_emails (email) values ('admin@therealworld.demo')
+     on conflict (email) do nothing`,
+  );
+  const adminId = (await client.query(
+    `insert into auth.users
+       (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
+        raw_user_meta_data, created_at, updated_at, last_sign_in_at)
+     values
+       (gen_random_uuid(), '00000000-0000-0000-0000-000000000000',
+        'authenticated', 'authenticated', 'admin@therealworld.demo',
+        crypt('Admin1234!', gen_salt('bf', 10)), now(),
+        '{"username":"admin","full_name":"Platform Administrator","role":"admin"}'::jsonb,
+        now(), now(), now())
+     returning id`,
+  )).rows[0].id;
+  ok("bootstrap insert built the profile", (await val(
+    `select username from public.profiles where id=$1`, [adminId])) === "admin");
+  ok("profile promoted to administrator", (await val(
+    `select role from public.profiles where id=$1`, [adminId])) === "admin");
+  ok("bootstrap password verifies with bcrypt", (await val(
+    `select encrypted_password = crypt('Admin1234!', encrypted_password) from auth.users where id=$1`,
+    [adminId])) === true);
+  ok("bootstrap account is email-confirmed", (await val(
+    `select email_confirmed_at is not null from auth.users where id=$1`, [adminId])) === true);
+  ok("starter balances opened for admin",
+    Number(await bal(adminId, "USDT")) === 1250
+      && Number(await bal(adminId, "BTC")) === 0.025
+      && Number(await bal(adminId, "ETH")) === 0.45,
+    [await bal(adminId, "USDT"), await bal(adminId, "BTC"), await bal(adminId, "ETH")].join(", "));
+  ok("starter ledger entries written", (await val(
+    `select count(*) from public.transactions where user_id=$1 and type='bonus'`, [adminId])) === 3);
+  await asUser(adminId, async () => {
+    ok("bootstrap admin passes is_admin()", (await val(`select public.is_admin()`)) === true);
+  });
+  await raisesMsg("re-running the bootstrap insert is blocked",
+    `insert into auth.users (id, email, raw_user_meta_data)
+     values (gen_random_uuid(), 'admin@therealworld.demo', '{"username":"admin"}'::jsonb)`,
+    [], "already taken");
 
   console.log("\n\u2500\u2500 Treasury sends \u2500\u2500");
   await asUser(alice, async () => {
