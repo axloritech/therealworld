@@ -18,34 +18,34 @@ and `README.md` (setup + security model).
 1. **Get the migrations onto the database.** The GitHub integration was
    connected *after* the last merge, so `0001–0004` may never have run. Merge
    a PR into `main` to trigger the sync, then confirm in
-   **Supabase dashboard → Database → Migrations** that `0001…0005` appear —
+   **Supabase dashboard → Database → Migrations** that `0001…0006` appear —
    or in **Table Editor**: `profiles`, `balances`, `asset_config`,
    `admin_emails`, `withdrawals`, `transactions`, `support_threads`,
    `support_messages`, `faqs` with **20 FAQ rows**.
 2. **Create the administrator** (a fresh project has zero auth users — the
-   demo credentials are local-demo-mode only). Paste the bootstrap SQL into
-   the SQL editor:
+   demo credentials are local-demo-mode only). Paste this into **Database →
+   SQL editor** after the migrations have been applied:
 
    ```sql
-   insert into public.admin_emails (email) values ('admin@therealworld.demo')
-   on conflict (email) do nothing;
-
-   insert into auth.users
-     (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
-      raw_user_meta_data, created_at, updated_at, last_sign_in_at)
-   values
-     (gen_random_uuid(), '00000000-0000-0000-0000-000000000000',
-      'authenticated', 'authenticated', 'admin@therealworld.demo',
-      crypt('Admin1234!', gen_salt('bf', 10)), now(),
-      '{"username":"admin","full_name":"Platform Administrator","role":"admin"}'::jsonb,
-      now(), now(), now());
+   select public.create_bootstrap_admin(
+     'admin@therealworld.demo', 'admin', 'Admin1234!', 'Platform Administrator'
+   );
    ```
 
-   If `crypt()` is missing: `extensions.crypt` / `extensions.gen_salt`.
-   The `on_auth_user_created` trigger builds the profile, opens starter
-   balances and promotes the account (email is on the `admin_emails`
-   allow-list) in one transaction. `admin` is reserved for ordinary sign-ups;
-   migration `0005` carves out pre-authorised addresses only.
+   `public.create_bootstrap_admin(email, username, password, full_name)` (migration
+   `0006`) is the only supported first-admin bootstrap. It pre-authorises the
+   address in `public.admin_emails` (so the sign-up trigger grants the admin
+   role, and the profile trigger opens the starter balances), writes every
+   column GoTrue scans, creates the `auth.identities` email row, and is
+   idempotent. `admin` is reserved for ordinary sign-ups; migration `0005`
+   carves out pre-authorised addresses only.
+
+   If the `admin` account was created earlier with the old raw
+   `insert into auth.users …` SQL editor recipe, call `create_bootstrap_admin`
+   with the same email/password — it **heals** the row, filling the NULL token
+   columns that produced `500: Database error querying schema
+   (sql: Scan error ... converting NULL to string is unsupported)` on password
+   login. There is no need to delete and recreate the account.
 3. **Vercel env vars — all three must exist:**
    - `NEXT_PUBLIC_SUPABASE_URL` (Project Settings → API)
    - `NEXT_PUBLIC_SUPABASE_ANON_KEY` (Project Settings → API)
@@ -72,9 +72,9 @@ and `README.md` (setup + security model).
   self-credit treasury funds — the functions re-check `is_privileged()` and
   the RLS policies leave balances/transactions/withdrawals write-protected
   over PostgREST.
-- The SQL editor bootstrap must be run **once**. The allow-list insert is
-  idempotent; the auth insert fails on the second run (duplicate email /
-  username) by design.
+- The SQL editor bootstrap must use `public.create_bootstrap_admin` (migration
+  `0006`). It is idempotent, so re-running it is safe, and it heals an
+  administrator row the old raw `insert into auth.users …` recipe left NULL.
 - Vercel's Supabase integration applies migrations in filename order and
   refuses partial deploys — keep all `.sql` files in `supabase/migrations/`
   and re-verifiable (`drop ... if exists`, `create or replace`).
@@ -94,8 +94,8 @@ The demo adapter also has a flow suite: compile `src/lib` to `/tmp` as
 CommonJS with a `server-only` stub and exercise treasury sends, withdrawal
 lifecycle, refunds, reversals, balance management and ledger order. Keep both
 suites green; `scripts/test-supabase-sql.mjs` currently asserts the full
-migration set **including** the first-administrator bootstrap path
-(`0001…0005`).
+migration set **including** the GoTrue-safe first-administrator bootstrap path
+(`0001…0006`, 72 assertions).
 
 ## Backlog (owner-supplied)
 

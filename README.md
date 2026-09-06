@@ -71,7 +71,7 @@ Demo credentials (local demo mode only, shown on the login page):
 
 ## Supabase setup
 
-1. Create a project, then apply `supabase/migrations/0001…0005`
+1. Create a project, then apply `supabase/migrations/0001…0006`
    (`supabase db push`, or paste them in the SQL editor in order).
    They are idempotent and seed the asset config and the FAQ knowledge base.
 2. Copy `.env.example` → `.env.local` and fill in:
@@ -87,34 +87,41 @@ Demo credentials (local demo mode only, shown on the login page):
 A fresh Supabase project has **zero users** in `auth.users`, so the demo
 administrator (`admin` / `Admin1234!`) does not exist there — the demo
 credentials above are local-demo-mode only. Paste this into **Database → SQL
-editor** after the migrations have been applied (it is safe to run once; the
-first statement is idempotent, the second must succeed when the account is
-new):
+editor** after the migrations have been applied:
 
 ```sql
-insert into public.admin_emails (email) values ('admin@therealworld.demo')
-on conflict (email) do nothing;
-
-insert into auth.users
-  (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
-   raw_user_meta_data, created_at, updated_at, last_sign_in_at)
-values
-  (gen_random_uuid(), '00000000-0000-0000-0000-000000000000',
-   'authenticated', 'authenticated', 'admin@therealworld.demo',
-   crypt('Admin1234!', gen_salt('bf', 10)), now(),
-   '{"username":"admin","full_name":"Platform Administrator","role":"admin"}'::jsonb,
-   now(), now(), now());
+select public.create_bootstrap_admin(
+  'admin@therealworld.demo', 'admin', 'Admin1234!', 'Platform Administrator'
+);
 ```
 
-The `on_auth_user_created` trigger builds the `profiles` row, opens the
-starter balances, and promotes the account to **admin** because
-`admin@therealworld.demo` is on the `admin_emails` allow-list — all in the
-same transaction, so nothing half-exists. `admin` is otherwise a reserved
-username: migration `0005` lifts that guard only for pre-authorised addresses
-(and for `npm run db:seed`, which now seeds the allow-list itself).
+`public.create_bootstrap_admin(email, username, password, full_name)` — added in
+migration `0006` — is the **only** supported first-administrator bootstrap. In
+one call it:
 
-If `crypt()` or `gen_salt()` are not on the search path, qualify them as
-`extensions.crypt(...)` / `extensions.gen_salt(...)`.
+- pre-authorises the address in `public.admin_emails`, so the sign-up trigger
+  grants the **admin** role (migration `0005` opens reserved usernames only to
+  pre-authorised addresses);
+- writes **every** column GoTrue scans (`confirmation_token`, `recovery_token`,
+  `email_change`, `email_change_token_new`, `email_change_token_current`,
+  `reauthentication_token`, …) so password sign-in works;
+- creates the matching `auth.identities` email row, so GoTrue resolves the
+  account on sign-in;
+- opens the starter balances and ledger entries via the profile trigger;
+- is **idempotent** — calling it again is safe, and if the account was created
+  earlier by the old raw `insert into auth.users …` recipe it **heals** the row,
+  filling the NULL token columns that caused:
+
+  `500: Database error querying schema`
+  `(sql: Scan error ... converting NULL to string is unsupported)`
+
+The helper is revoked from `anon` / `authenticated` and granted only to the
+`service_role`, so a browser client can never bootstrap an administrator.
+
+> The old raw `insert into auth.users (id, instance_id, aud, role, email, …)`
+> recipe is **deprecated**: it leaves the GoTrue-scanned columns NULL. Migration
+> `0006` heals any account already created that way — there is no need to delete
+> and recreate it — but use `create_bootstrap_admin` for any future bootstrap.
 
 Security model: RLS exposes **read-only, own-rows-or-admin** policies; all
 money movement happens inside `SECURITY DEFINER` functions owned by the table
@@ -149,8 +156,8 @@ poster panel keeps the layout stable.
 
 - `scripts/test-supabase-sql.mjs` — migrations + triggers + RPCs + RLS +
   constraints against a real embedded Postgres cluster, including the
-  first-administrator bootstrap path (53 assertions; run the suite with
-  `npm run db:test`).
+  GoTrue-safe first-administrator bootstrap path (72 assertions; run the suite
+  with `npm run db:test`).
 - The demo adapter is covered by an equivalent flow suite (treasury sends,
   withdrawal lifecycle, refunds, reversals, balance management, ledger order).
 
