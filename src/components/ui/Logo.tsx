@@ -7,9 +7,10 @@ import { SITE } from "@/lib/config";
 /**
  * Logo slots.
  *
- * Deliberately EMPTY by default: nothing is rendered inside the frame until you
- * set NEXT_PUBLIC_LOGO_URL (and optionally NEXT_PUBLIC_LOGO_MARK_URL for the
- * square icon). Drop your art in and every slot on the site fills itself.
+ * Ships with the circular transparent brand mark at /public/logo.png; every
+ * slot fills itself with it. The frame is a perfect circle (rounded-full +
+ * overflow-hidden) so round marks sit flush, and the dashed placeholder
+ * outline only appears while no art is configured (or `showFrame` is set).
  */
 
 type Variant = "header" | "footer" | "mark" | "large";
@@ -17,7 +18,9 @@ type Variant = "header" | "footer" | "mark" | "large";
 const SIZES: Record<Variant, { box: string; label: string }> = {
   header: { box: "h-9 w-[7.5rem]", label: "Logo" },
   footer: { box: "h-10 w-[8.5rem]", label: "Logo" },
-  mark: { box: "h-9 w-9", label: "" },
+  // Square box for the circular mark — rounded-full + overflow-hidden trim it
+  // to a perfect circle with no corner bleed.
+  mark: { box: "h-9 w-9 rounded-full overflow-hidden", label: "" },
   large: { box: "h-14 w-[10.5rem]", label: "Logo" },
 };
 
@@ -37,8 +40,8 @@ export function LogoSlot({
   const size = SIZES[variant];
   const configured =
     variant === "mark" ? SITE.logoMarkUrl || SITE.logoUrl : SITE.logoUrl || SITE.logoMarkUrl;
-  // If the file has not been dropped into /public yet, fall back to the clean
-  // empty slot instead of showing a broken image.
+  // If the configured art cannot be loaded, fall back to the clean empty slot
+  // instead of showing a broken image.
   const src = missing ? "" : configured;
 
   const frame = (
@@ -47,8 +50,10 @@ export function LogoSlot({
       className={clsx(
         "logo-slot",
         size.box,
-        // Invisible by default: a clean, empty slot that reserves the exact space.
-        !showFrame && !src && "border-transparent bg-transparent",
+        // With real art the frame goes fully invisible — the circular mark
+        // floats seamlessly. The dashed outline only shows for empty slots
+        // or when a placeholder frame is explicitly requested.
+        !showFrame && "border-transparent bg-transparent",
         className,
       )}
     >
@@ -69,7 +74,7 @@ export function LogoSlot({
   return (
     <a
       href={href}
-      className="inline-flex shrink-0 items-center rounded-xl transition hover:opacity-90"
+      className="inline-flex shrink-0 items-center rounded-full transition hover:opacity-90"
       aria-label={SITE.name}
     >
       {frame}

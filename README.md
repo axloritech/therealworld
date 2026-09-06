@@ -146,9 +146,12 @@ the post-deploy checklist live in `docs/ops-notes.md`.
 
 ## Branding
 
-All logo areas are intentionally **empty drop-in slots** (header, footer,
-auth pages). Set `NEXT_PUBLIC_LOGO_URL` / `NEXT_PUBLIC_LOGO_MARK_URL` later and
-every slot fills itself — no code change. The hero video is configured with
+Logo areas render the **circular transparent brand mark** shipped at
+`public/logo.png` (header, footer, auth pages, dashboard, admin, 404). The
+slots are perfectly round (`rounded-full` + `overflow-hidden`), so the mark
+sits flush on dark surfaces with no white box around it. Replace the file or
+set `NEXT_PUBLIC_LOGO_URL` / `NEXT_PUBLIC_LOGO_MARK_URL` to use your own art —
+no code change. The hero video is configured with
 `NEXT_PUBLIC_YOUTUBE_VIDEO_ID` (bare ID or any YouTube URL); without it a
 poster panel keeps the layout stable.
 

@@ -101,6 +101,6 @@ migration set **including** the GoTrue-safe first-administrator bootstrap path
 
 - Pixel-match desktop marketing pages + dashboard/admin screens against
   screenshots when they arrive.
-- Wire `logo.jpg` when the owner re-attaches it: drop it at `public/logo.jpg`
-  and commit (slots auto-fill; `NEXT_PUBLIC_LOGO_URL` / `_MARK_URL` override).
+- Logo shipped: circular transparent mark at `public/logo.png` (slots
+  auto-fill; `NEXT_PUBLIC_LOGO_URL` / `_MARK_URL` override).
 - Keep both test suites green; extend them as features land.
