@@ -25,9 +25,9 @@ export const HAS_SERVICE_ROLE = Boolean(HAS_SUPABASE && SUPABASE_SERVICE_ROLE_KE
 export const SITE = {
   name: str("NEXT_PUBLIC_SITE_NAME", "The Real World"),
   url: str("NEXT_PUBLIC_SITE_URL", "http://localhost:3000"),
-  /** Empty by design — the logo slots stay blank until you supply your own art. */
-  logoUrl: str("NEXT_PUBLIC_LOGO_URL", "/logo.jpg"),
-  logoMarkUrl: str("NEXT_PUBLIC_LOGO_MARK_URL", "/logo.jpg"),
+  /** Circular transparent brand mark — slots render it seamlessly on dark surfaces. */
+  logoUrl: str("NEXT_PUBLIC_LOGO_URL", "/logo.png"),
+  logoMarkUrl: str("NEXT_PUBLIC_LOGO_MARK_URL", "/logo.png"),
 };
 
 /* Cosmetic figure shown on the admin overview: one trillion US dollars of

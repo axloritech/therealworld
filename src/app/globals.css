@@ -317,9 +317,11 @@
     animation: var(--animate-shimmer);
   }
 
-  /* Logo slot — intentionally EMPTY until you drop in your own mark */
+  /* Logo slot — circular frame (rounded-full + overflow-hidden) so round brand
+     marks sit flush with no corner artifacts. The dashed placeholder outline
+     only appears for empty slots or when a frame is explicitly requested. */
   .logo-slot {
-    @apply flex shrink-0 items-center justify-center overflow-hidden rounded-xl
+    @apply flex shrink-0 items-center justify-center overflow-hidden rounded-full
            border border-dashed border-line-strong bg-white/[0.02];
   }
   .logo-slot img { @apply h-full w-full object-contain; }
