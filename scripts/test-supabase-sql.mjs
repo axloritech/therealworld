@@ -36,18 +36,58 @@ create schema if not exists auth;
 grant usage on schema auth to anon, authenticated, service_role;
 grant execute on all functions in schema auth to anon, authenticated, service_role;
 
+-- Model GoTrue's real auth.users shape (all the columns its sign-in scans),
+-- because the bootstrap bug is precisely a row whose token/verification
+-- columns are NULL. The columns are deliberately nullable below so the
+-- "broken" raw-insert bootstrap can be reproduced.
 create table if not exists auth.users (
-  id                 uuid primary key default gen_random_uuid(),
-  instance_id        uuid,
-  aud                text,
-  role               text,
-  email              text,
-  encrypted_password text,
-  email_confirmed_at timestamptz,
-  raw_user_meta_data jsonb not null default '{}'::jsonb,
-  created_at         timestamptz not null default now(),
-  updated_at         timestamptz not null default now(),
-  last_sign_in_at    timestamptz
+  id                        uuid primary key default gen_random_uuid(),
+  instance_id               uuid,
+  aud                       text,
+  role                      text,
+  email                     text,
+  encrypted_password        text,
+  email_confirmed_at        timestamptz,
+  invited_at                timestamptz,
+  confirmation_token        text,
+  confirmation_sent_at      timestamptz,
+  recovery_token            text,
+  recovery_sent_at          timestamptz,
+  email_change_token_new    text,
+  email_change              text,
+  email_change_sent_at      timestamptz,
+  email_change_token_current text,
+  email_change_confirm_status smallint,
+  last_sign_in_at           timestamptz,
+  raw_app_meta_data         jsonb not null default '{}'::jsonb,
+  raw_user_meta_data        jsonb not null default '{}'::jsonb,
+  is_super_admin            boolean not null default false,
+  created_at                timestamptz not null default now(),
+  updated_at                timestamptz not null default now(),
+  phone                     text,
+  phone_confirmed_at        timestamptz,
+  phone_change              text,
+  phone_change_token        text,
+  phone_change_sent_at      timestamptz,
+  reauthentication_token    text,
+  reauthentication_sent_at  timestamptz,
+  deleted_at                timestamptz,
+  is_sso_user               boolean not null default false,
+  is_anonymous              boolean not null default false
+);
+
+-- GoTrue resolves sign-ins through auth.identities (provider 'email'). The
+-- bootstrap must create this row too or a fresh admin cannot sign in.
+create table if not exists auth.identities (
+  id               uuid primary key default gen_random_uuid(),
+  provider_id      text not null,
+  user_id          uuid not null references auth.users (id) on delete cascade,
+  identity_data    jsonb not null default '{}'::jsonb,
+  provider         text not null,
+  last_sign_in_at  timestamptz,
+  created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now(),
+  unique (provider_id, provider)
 );
 
 create or replace function auth.uid() returns uuid language sql stable as $$
@@ -227,6 +267,76 @@ async function main() {
     `insert into auth.users (id, email, raw_user_meta_data)
      values (gen_random_uuid(), 'admin@therealworld.demo', '{"username":"admin"}'::jsonb)`,
     [], "already taken");
+
+  console.log("\n\u2500\u2500 GoTrue-safe admin bootstrap (migration 0006) \u2500\u2500");
+  // The raw insert above left every token/verification column NULL. That NULL
+  // is exactly what GoTrue chokes on during password sign-in:
+  //   "500: Database error querying schema
+  //    (sql: Scan error ... converting NULL to string is unsupported)".
+  const heal = () =>
+    asService(() => val(
+      `select public.create_bootstrap_admin('admin@therealworld.demo', 'admin', 'Admin1234!', 'Platform Administrator')`,
+    ));
+
+  ok("raw bootstrap left the GoTrue-scanned token columns NULL (the scan bug)",
+    (await val(`select confirmation_token is null and recovery_token is null
+      and email_change is null and email_change_token_new is null
+      from auth.users where id=$1`, [adminId])) === true);
+
+  ok("create_bootstrap_admin heals the existing admin row (same id)",
+    String(await heal()) === String(adminId));
+  ok("heal writes every GoTrue-scanned column non-NULL",
+    (await val(`select confirmation_token is not null and recovery_token is not null
+      and email_change is not null and email_change_token_new is not null
+      and email_change_token_current is not null and reauthentication_token is not null
+      and phone_change_token is not null and email_change_confirm_status is not null
+      from auth.users where id=$1`, [adminId])) === true);
+  ok("heal keeps the account email-confirmed",
+    (await val(`select email_confirmed_at is not null from auth.users where id=$1`, [adminId])) === true);
+  ok("heal creates the auth.identities email row",
+    (await val(`select count(*) from auth.identities where user_id=$1 and provider='email'`, [adminId])) === 1);
+  ok("heal keeps the profile as admin",
+    (await val(`select role from public.profiles where id=$1`, [adminId])) === "admin");
+  ok("create_bootstrap_admin is idempotent (second heal, same id)", String(await heal()) === String(adminId));
+  ok("healed password still verifies",
+    (await val(`select encrypted_password = crypt('Admin1234!', encrypted_password) from auth.users where id=$1`, [adminId])) === true);
+
+  // Fresh database path: a brand-new administrator is created in one call.
+  const freshId = await asService(() => val(
+    `select public.create_bootstrap_admin('owner@therealworld.demo', 'owner', 'Owner1234!', 'The Owner')`,
+  ));
+  ok("create_bootstrap_admin works on a fresh database", typeof freshId === "string" && String(freshId).length > 0);
+  ok("fresh bootstrap built the profile and promoted to admin",
+    (await val(`select username = 'owner' and role = 'admin' from public.profiles where id=$1`, [freshId])) === true);
+  ok("fresh bootstrap account is email-confirmed",
+    (await val(`select email_confirmed_at is not null from auth.users where id=$1`, [freshId])) === true);
+  ok("fresh bootstrap creates the auth.identities email row",
+    (await val(`select count(*) from auth.identities where user_id=$1 and provider='email'`, [freshId])) === 1);
+  ok("fresh bootstrap writes every scanned column non-NULL",
+    (await val(`select confirmation_token is not null and recovery_token is not null
+      and email_change is not null and email_change_token_new is not null
+      and reauthentication_token is not null
+      from auth.users where id=$1`, [freshId])) === true);
+  ok("fresh bootstrap password verifies",
+    (await val(`select encrypted_password = crypt('Owner1234!', encrypted_password) from auth.users where id=$1`, [freshId])) === true);
+  ok("fresh bootstrap opened starter balances",
+    Number(await bal(freshId, "USDT")) === 1250
+      && Number(await bal(freshId, "BTC")) === 0.025
+      && Number(await bal(freshId, "ETH")) === 0.45);
+  ok("fresh bootstrap admin passes is_admin()",
+    (await asUser(freshId, () => val(`select public.is_admin()`))) === true);
+
+  ok("create_bootstrap_admin is revoked from anon and authenticated",
+    (await (async () => {
+      const anon = await asAnon(() => raises(
+        `select public.create_bootstrap_admin('h@x.com', 'hacker', 'Hacker1234!', 'Hacker')`,
+      ));
+      const member = await asUser(alice, () => raises(
+        `select public.create_bootstrap_admin('h@x.com', 'hacker', 'Hacker1234!', 'Hacker')`,
+      ));
+      return anon.toLowerCase().includes("permission denied")
+        && member.toLowerCase().includes("permission denied");
+    })()));
 
   console.log("\n\u2500\u2500 Treasury sends \u2500\u2500");
   await asUser(alice, async () => {
