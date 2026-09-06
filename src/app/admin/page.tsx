@@ -19,6 +19,30 @@ import { requireAdmin } from "@/lib/auth";
 import { ADMIN_MOCK_BALANCE_USD, ASSETS, assetMeta, usdValue } from "@/lib/config";
 import { fmtAmount, fmtDateTime, fmtUsd, timeAgo } from "@/lib/format";
 import { getRepo } from "@/lib/repo";
+import type { AdminStats } from "@/lib/types";
+
+type Settled<T> = { ok: true; value: T } | { ok: false; error: string };
+
+/** Resolve a promise without letting one failing query crash the whole page. */
+async function settle<T>(p: Promise<T>): Promise<Settled<T>> {
+  try {
+    return { ok: true, value: await p };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+const EMPTY_STATS: AdminStats = {
+  users: 0,
+  pending_withdrawals: 0,
+  approved_withdrawals: 0,
+  rejected_withdrawals: 0,
+  open_threads: 0,
+  transactions: 0,
+  balances: { BTC: 0, ETH: 0, USDT: 0 },
+  withdrawal_volume: 0,
+  treasury_sent_usd: 0,
+};
 
 export const metadata: Metadata = { title: "Admin overview" };
 
@@ -26,13 +50,26 @@ export default async function AdminOverviewPage() {
   const admin = await requireAdmin();
   const repo = getRepo();
 
-  const [stats, pending, recentUsers, threads, ledger] = await Promise.all([
-    repo.adminStats(),
-    repo.listWithdrawals({ status: "pending", limit: 5 }),
-    repo.listProfiles({ limit: 5 }),
-    repo.listThreads({ limit: 5 }),
-    repo.listTransactions(null, { limit: 6 }),
+  // Settle each query independently so a failing Supabase call surfaces its own
+  // error on the page instead of taking the whole admin console down with an
+  // opaque "Application error … Digest" 500.
+  const [statsR, pendingR, recentUsersR, threadsR, ledgerR] = await Promise.all([
+    settle(repo.adminStats()),
+    settle(repo.listWithdrawals({ status: "pending", limit: 5 })),
+    settle(repo.listProfiles({ limit: 5 })),
+    settle(repo.listThreads({ limit: 5 })),
+    settle(repo.listTransactions(null, { limit: 6 })),
   ]);
+
+  const errors = [statsR, pendingR, recentUsersR, threadsR, ledgerR]
+    .filter((r): r is { ok: false; error: string } => !r.ok)
+    .map((r) => r.error);
+
+  const stats = statsR.ok ? statsR.value : EMPTY_STATS;
+  const pending = pendingR.ok ? pendingR.value : { rows: [], total: 0 };
+  const recentUsers = recentUsersR.ok ? recentUsersR.value : { rows: [], total: 0 };
+  const threads = threadsR.ok ? threadsR.value : [];
+  const ledger = ledgerR.ok ? ledgerR.value : [];
 
   return (
     <AdminFrame
@@ -53,6 +90,20 @@ export default async function AdminOverviewPage() {
       }
     >
       <div className="flex flex-col gap-6">
+        {errors.length > 0 && (
+          <section className="card border-flare-500/40 p-5 sm:p-6" role="alert">
+            <h2 className="text-sm font-bold text-flare-300">Database query failed</h2>
+            <p className="mt-2 text-xs leading-relaxed text-smoke">
+              One or more admin queries could not be completed. The underlying
+              database error is shown below so the real cause is visible instead
+              of a generic crash.
+            </p>
+            <pre className="mt-3 max-h-72 overflow-auto rounded-xl border border-line bg-night-850/60 p-3 font-mono text-[11px] leading-relaxed text-flare-200">
+              {errors.join("\n")}
+            </pre>
+          </section>
+        )}
+
         {/* ── Mock treasury balance (administrators only) ── */}
         <section className="panel-brand relative overflow-hidden rounded-card px-6 py-7 sm:px-8 sm:py-8">
           <div
